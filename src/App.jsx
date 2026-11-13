@@ -1,157 +1,95 @@
 import { useState, useEffect } from 'react';
 
-function App() {
+export default function App() {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
-  
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  const [apiUrl] = useState(import.meta.env.VITE_API_URL);
+
+  // State for the new product form
+  const [newProd, setNewProd] = useState({ name: '', price: '', description: '', sku: '', stock: '' });
 
   const fetchProducts = () => {
-    fetch(`${apiUrl}/api/products`)
-      .then((res) => res.json())
-      .then((data) => {
-        setProducts(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error(err);
-        setLoading(false);
-      });
+    fetch(`${apiUrl}/api/products`).then(res => res.json()).then(data => setProducts(data));
   };
 
   useEffect(() => {
     fetchProducts();
-    
-    // Poll for updates every 5 seconds
-    const interval = setInterval(() => {
-      fetchProducts();
-    }, 5000); 
-
+    const interval = setInterval(fetchProducts, 5000); 
     return () => clearInterval(interval);
   }, [apiUrl]);
 
   const handleRestock = async (productId) => {
     const amountStr = window.prompt("How many items are you restocking?");
     const amount = parseInt(amountStr);
-    
     if (!amount || isNaN(amount)) return;
 
-    try {
-      const response = await fetch(`${apiUrl}/api/restock`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_id: productId, amount: amount })
-      });
-      
-      if (response.ok) {
-        alert(`Successfully restocked ${amount} items!`);
-        fetchProducts(); // Instantly refresh
-      }
-    } catch (err) {
-      alert("Restock failed");
-    }
-  };
-
-  const addToCart = (product) => {
-    setCart((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
-      if (existing) {
-        return prev.map((item) => 
-          item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item
-        );
-      }
-      return [...prev, { ...product, cartQuantity: 1 }];
+    await fetch(`${apiUrl}/api/restock`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: productId, amount: amount })
     });
+    fetchProducts(); 
   };
 
-  const calculateTotal = () => {
-    return cart.reduce((total, item) => total + (item.price * item.cartQuantity), 0).toFixed(2);
+  // NEW: Submit handler for adding a product
+  const handleAddProduct = async (e) => {
+    e.preventDefault();
+    const response = await fetch(`${apiUrl}/api/products`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...newProd, initial_stock: parseInt(newProd.stock) })
+    });
+
+    if (response.ok) {
+      alert("Product added to Cloud! It will sync to the Local POS shortly.");
+      setNewProd({ name: '', price: '', description: '', sku: '', stock: '' }); // Clear form
+      fetchProducts();
+    } else {
+      const err = await response.json();
+      alert("Error: " + err.error);
+    }
   };
 
   const handleCheckout = async () => {
-    if (cart.length === 0) return;
-    setIsProcessing(true);
-    
-    try {
-      const response = await fetch(`${apiUrl}/api/store-checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cart, totalAmount: calculateTotal() })
-      });
-      
-      if (!response.ok) throw new Error('Checkout failed');
-      
-      alert('Online Order Placed Successfully!');
-      setCart([]); 
-      fetchProducts(); // Instantly refresh stock
-    } catch (err) {
-      alert(`Error: ${err.message}`);
-    } finally {
-      setIsProcessing(false);
-    }
+    const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.cartQuantity), 0).toFixed(2);
+    await fetch(`${apiUrl}/api/store-checkout`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cart, totalAmount })
+    });
+    setCart([]); fetchProducts(); alert("Order Placed!");
   };
 
   return (
-    <div style={{ display: 'flex', fontFamily: 'sans-serif', minHeight: '100vh', backgroundColor: '#1a1a1a', color: 'white' }}>
+    <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
       
-      {/* LEFT SIDE: STORE PRODUCTS */}
-      <div style={{ flex: 2, padding: '2rem' }}>
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🛹 Skateshop Online Store</h1>
-        {loading ? <p>Waking up server and loading...</p> : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem', marginTop: '2rem' }}>
-            {products.map((product) => (
-              <div key={product.id} style={{ backgroundColor: '#2a2a2a', border: '1px solid #444', padding: '1rem', borderRadius: '8px' }}>
-                <h3 style={{ margin: '0 0 0.5rem 0' }}>{product.name}</h3>
-                <p style={{ color: '#aaa', fontSize: '0.9rem' }}>{product.description}</p>
-                <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>${product.price}</p>
-                <p style={{ color: product.quantity > 0 ? '#4caf50' : '#f44336' }}>In Stock: {product.quantity}</p>
-                
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-                  <button 
-                    onClick={() => addToCart(product)}
-                    disabled={product.quantity === 0}
-                    style={{ flex: 1, padding: '0.5rem', backgroundColor: product.quantity > 0 ? '#0070f3' : '#555', color: 'white', border: 'none', borderRadius: '4px', cursor: product.quantity > 0 ? 'pointer' : 'not-allowed' }}>
-                    Add to Cart
-                  </button>
-                  <button 
-                    onClick={() => handleRestock(product.id)}
-                    style={{ padding: '0.5rem', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                    Restock
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* ADMIN FORM SECTION */}
+      <div style={{ padding: '1rem', border: '2px dashed #f39c12', marginBottom: '2rem', borderRadius: '8px' }}>
+        <h3>Admin: Add New Product</h3>
+        <form onSubmit={handleAddProduct} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <input required placeholder="Name" value={newProd.name} onChange={e => setNewProd({...newProd, name: e.target.value})} />
+          <input required placeholder="SKU (e.g., BRG-001)" value={newProd.sku} onChange={e => setNewProd({...newProd, sku: e.target.value})} />
+          <input required placeholder="Price" type="number" step="0.01" value={newProd.price} onChange={e => setNewProd({...newProd, price: e.target.value})} />
+          <input required placeholder="Description" value={newProd.description} onChange={e => setNewProd({...newProd, description: e.target.value})} />
+          <input required placeholder="Initial Stock" type="number" value={newProd.stock} onChange={e => setNewProd({...newProd, stock: e.target.value})} />
+          <button type="submit" style={{ backgroundColor: '#f39c12', color: 'white', padding: '0.5rem 1rem', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Add Product</button>
+        </form>
       </div>
 
-      {/* RIGHT SIDE: SHOPPING CART */}
-      <div style={{ flex: 1, backgroundColor: '#111', padding: '2rem', borderLeft: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
-        <h2>Your Cart</h2>
-        <div style={{ flex: 1, marginTop: '1rem' }}>
-          {cart.length === 0 && <p style={{ color: '#888' }}>Cart is empty.</p>}
-          {cart.map((item) => (
-            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #333', paddingBottom: '1rem', marginBottom: '1rem' }}>
-              <div>{item.name} x {item.cartQuantity}</div>
-              <div>${(item.price * item.cartQuantity).toFixed(2)}</div>
+      <h1>🛹 Online Store</h1>
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        {products.map(p => (
+          <div key={p.id} style={{ border: '1px solid #ccc', padding: '1rem', borderRadius: '8px', width: '250px' }}>
+            <h3>{p.name} - ${p.price}</h3>
+            <p style={{ fontSize: '0.8rem', color: '#666' }}>SKU: {p.sku}</p>
+            <p>{p.description}</p>
+            <p>Stock: {p.quantity}</p>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+              <button onClick={() => setCart([...cart, { ...p, cartQuantity: 1 }])} style={{ padding: '0.5rem', backgroundColor: '#0070f3', color: 'white', border: 'none', borderRadius: '4px' }}>Add to Cart</button>
+              <button onClick={() => handleRestock(p.id)} style={{ padding: '0.5rem', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '4px' }}>Restock</button>
             </div>
-          ))}
-        </div>
-        <div style={{ borderTop: '2px solid #444', paddingTop: '1rem' }}>
-          <h2 style={{ display: 'flex', justifyContent: 'space-between' }}>Total: <span>${calculateTotal()}</span></h2>
-          <button 
-            onClick={handleCheckout}
-            disabled={cart.length === 0 || isProcessing}
-            style={{ width: '100%', padding: '1rem', marginTop: '1rem', backgroundColor: cart.length === 0 ? '#444' : '#4caf50', color: 'white', fontSize: '1rem', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: cart.length === 0 ? 'not-allowed' : 'pointer' }}>
-            {isProcessing ? 'Processing...' : 'Checkout'}
-          </button>
-        </div>
+          </div>
+        ))}
       </div>
-
+      
+      {cart.length > 0 && <button onClick={handleCheckout} style={{ marginTop: '2rem', padding: '1rem', backgroundColor: 'green', color: 'white' }}>Checkout</button>}
     </div>
   );
 }
-
-export default App;
