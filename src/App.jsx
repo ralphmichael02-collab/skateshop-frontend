@@ -5,9 +5,9 @@ function App() {
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-  // Moved fetch outside useEffect so we can call it after restocking
   const fetchProducts = () => {
     fetch(`${apiUrl}/api/products`)
       .then((res) => res.json())
@@ -23,6 +23,13 @@ function App() {
 
   useEffect(() => {
     fetchProducts();
+    
+    // Poll for updates every 5 seconds
+    const interval = setInterval(() => {
+      fetchProducts();
+    }, 5000); 
+
+    return () => clearInterval(interval);
   }, [apiUrl]);
 
   const handleRestock = async (productId) => {
@@ -40,7 +47,7 @@ function App() {
       
       if (response.ok) {
         alert(`Successfully restocked ${amount} items!`);
-        fetchProducts(); // Refresh the list to show new stock
+        fetchProducts(); // Instantly refresh
       }
     } catch (err) {
       alert("Restock failed");
@@ -78,7 +85,7 @@ function App() {
       
       alert('Online Order Placed Successfully!');
       setCart([]); 
-      fetchProducts(); // Refresh products after checkout
+      fetchProducts(); // Instantly refresh stock
     } catch (err) {
       alert(`Error: ${err.message}`);
     } finally {
