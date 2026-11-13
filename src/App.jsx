@@ -7,7 +7,8 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-  useEffect(() => {
+  // Moved fetch outside useEffect so we can call it after restocking
+  const fetchProducts = () => {
     fetch(`${apiUrl}/api/products`)
       .then((res) => res.json())
       .then((data) => {
@@ -18,7 +19,33 @@ function App() {
         console.error(err);
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    fetchProducts();
   }, [apiUrl]);
+
+  const handleRestock = async (productId) => {
+    const amountStr = window.prompt("How many items are you restocking?");
+    const amount = parseInt(amountStr);
+    
+    if (!amount || isNaN(amount)) return;
+
+    try {
+      const response = await fetch(`${apiUrl}/api/restock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId, amount: amount })
+      });
+      
+      if (response.ok) {
+        alert(`Successfully restocked ${amount} items!`);
+        fetchProducts(); // Refresh the list to show new stock
+      }
+    } catch (err) {
+      alert("Restock failed");
+    }
+  };
 
   const addToCart = (product) => {
     setCart((prev) => {
@@ -51,7 +78,7 @@ function App() {
       
       alert('Online Order Placed Successfully!');
       setCart([]); 
-      window.location.reload(); 
+      fetchProducts(); // Refresh products after checkout
     } catch (err) {
       alert(`Error: ${err.message}`);
     } finally {
@@ -73,12 +100,20 @@ function App() {
                 <p style={{ color: '#aaa', fontSize: '0.9rem' }}>{product.description}</p>
                 <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>${product.price}</p>
                 <p style={{ color: product.quantity > 0 ? '#4caf50' : '#f44336' }}>In Stock: {product.quantity}</p>
-                <button 
-                  onClick={() => addToCart(product)}
-                  disabled={product.quantity === 0}
-                  style={{ width: '100%', padding: '0.5rem', backgroundColor: product.quantity > 0 ? '#0070f3' : '#555', color: 'white', border: 'none', borderRadius: '4px', cursor: product.quantity > 0 ? 'pointer' : 'not-allowed' }}>
-                  Add to Cart
-                </button>
+                
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                  <button 
+                    onClick={() => addToCart(product)}
+                    disabled={product.quantity === 0}
+                    style={{ flex: 1, padding: '0.5rem', backgroundColor: product.quantity > 0 ? '#0070f3' : '#555', color: 'white', border: 'none', borderRadius: '4px', cursor: product.quantity > 0 ? 'pointer' : 'not-allowed' }}>
+                    Add to Cart
+                  </button>
+                  <button 
+                    onClick={() => handleRestock(product.id)}
+                    style={{ padding: '0.5rem', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                    Restock
+                  </button>
+                </div>
               </div>
             ))}
           </div>
